@@ -38,12 +38,6 @@ var app = (function () {
             node.parentNode.removeChild(node);
         }
     }
-    function destroy_each(iterations, detaching) {
-        for (let i = 0; i < iterations.length; i += 1) {
-            if (iterations[i])
-                iterations[i].d(detaching);
-        }
-    }
     function element(name) {
         return document.createElement(name);
     }
@@ -190,6 +184,99 @@ var app = (function () {
         if (block && block.i) {
             outroing.delete(block);
             block.i(local);
+        }
+    }
+
+    function destroy_block(block, lookup) {
+        block.d(1);
+        lookup.delete(block.key);
+    }
+    function update_keyed_each(old_blocks, dirty, get_key, dynamic, ctx, list, lookup, node, destroy, create_each_block, next, get_context) {
+        let o = old_blocks.length;
+        let n = list.length;
+        let i = o;
+        const old_indexes = {};
+        while (i--)
+            old_indexes[old_blocks[i].key] = i;
+        const new_blocks = [];
+        const new_lookup = new Map();
+        const deltas = new Map();
+        const updates = [];
+        i = n;
+        while (i--) {
+            const child_ctx = get_context(ctx, list, i);
+            const key = get_key(child_ctx);
+            let block = lookup.get(key);
+            if (!block) {
+                block = create_each_block(key, child_ctx);
+                block.c();
+            }
+            else if (dynamic) {
+                // defer updates until all the DOM shuffling is done
+                updates.push(() => block.p(child_ctx, dirty));
+            }
+            new_lookup.set(key, new_blocks[i] = block);
+            if (key in old_indexes)
+                deltas.set(key, Math.abs(i - old_indexes[key]));
+        }
+        const will_move = new Set();
+        const did_move = new Set();
+        function insert(block) {
+            transition_in(block, 1);
+            block.m(node, next);
+            lookup.set(block.key, block);
+            next = block.first;
+            n--;
+        }
+        while (o && n) {
+            const new_block = new_blocks[n - 1];
+            const old_block = old_blocks[o - 1];
+            const new_key = new_block.key;
+            const old_key = old_block.key;
+            if (new_block === old_block) {
+                // do nothing
+                next = new_block.first;
+                o--;
+                n--;
+            }
+            else if (!new_lookup.has(old_key)) {
+                // remove old block
+                destroy(old_block, lookup);
+                o--;
+            }
+            else if (!lookup.has(new_key) || will_move.has(new_key)) {
+                insert(new_block);
+            }
+            else if (did_move.has(old_key)) {
+                o--;
+            }
+            else if (deltas.get(new_key) > deltas.get(old_key)) {
+                did_move.add(new_key);
+                insert(new_block);
+            }
+            else {
+                will_move.add(old_key);
+                o--;
+            }
+        }
+        while (o--) {
+            const old_block = old_blocks[o];
+            if (!new_lookup.has(old_block.key))
+                destroy(old_block, lookup);
+        }
+        while (n)
+            insert(new_blocks[n - 1]);
+        run_all(updates);
+        return new_blocks;
+    }
+    function validate_each_keys(ctx, list, get_context, get_key) {
+        const keys = new Set();
+        for (let i = 0; i < list.length; i++) {
+            const key = get_key(get_context(ctx, list, i));
+            if (keys.has(key)) {
+                throw new Error('Cannot have duplicate keys in a keyed each');
+            }
+            keys.add(key);
         }
     }
     function mount_component(component, target, anchor, customElement) {
@@ -416,7 +503,7 @@ var app = (function () {
     	return child_ctx;
     }
 
-    // (52:0) {:else}
+    // (54:0) {:else}
     function create_else_block(ctx) {
     	let p;
     	let t0;
@@ -425,9 +512,9 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			p = element("p");
-    			t0 = text("Password is valid: ");
+    			t0 = text("Password: ");
     			t1 = text(/*enteredPassword*/ ctx[0]);
-    			add_location(p, file, 52, 1, 1510);
+    			add_location(p, file, 54, 1, 1362);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, p, anchor);
@@ -446,22 +533,22 @@ var app = (function () {
     		block,
     		id: create_else_block.name,
     		type: "else",
-    		source: "(52:0) {:else}",
+    		source: "(54:0) {:else}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (50:42) 
+    // (52:38) 
     function create_if_block_1(ctx) {
     	let p;
 
     	const block = {
     		c: function create() {
     			p = element("p");
-    			p.textContent = "Password is too long";
-    			add_location(p, file, 50, 1, 1473);
+    			p.textContent = "Password is too long!";
+    			add_location(p, file, 52, 1, 1324);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, p, anchor);
@@ -476,22 +563,22 @@ var app = (function () {
     		block,
     		id: create_if_block_1.name,
     		type: "if",
-    		source: "(50:42) ",
+    		source: "(52:38) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (48:0) {#if passwordValidity === "Too short"}
+    // (50:0) {#if passwordValidity === "short"}
     function create_if_block(ctx) {
     	let p;
 
     	const block = {
     		c: function create() {
     			p = element("p");
-    			p.textContent = "Password is too short";
-    			add_location(p, file, 48, 1, 1400);
+    			p.textContent = "Password is too short!";
+    			add_location(p, file, 50, 1, 1254);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, p, anchor);
@@ -506,46 +593,53 @@ var app = (function () {
     		block,
     		id: create_if_block.name,
     		type: "if",
-    		source: "(48:0) {#if passwordValidity === \\\"Too short\\\"}",
+    		source: "(50:0) {#if passwordValidity === \\\"short\\\"}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (56:1) {#each passwordsArray as password, i}
-    function create_each_block(ctx) {
+    // (59:1) {#each passwords as pw, i (pw)}
+    function create_each_block(key_1, ctx) {
     	let li;
-    	let p;
-    	let t0_value = /*password*/ ctx[6] + "";
-    	let t0;
-    	let t1;
+    	let t_value = /*pw*/ ctx[6] + "";
+    	let t;
     	let mounted;
     	let dispose;
 
     	const block = {
+    		key: key_1,
+    		first: null,
     		c: function create() {
     			li = element("li");
-    			p = element("p");
-    			t0 = text(t0_value);
-    			t1 = space();
-    			add_location(p, file, 58, 3, 1714);
-    			add_location(li, file, 57, 2, 1665);
+    			t = text(t_value);
+    			add_location(li, file, 59, 2, 1444);
+    			this.first = li;
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, li, anchor);
-    			append_dev(li, p);
-    			append_dev(p, t0);
-    			append_dev(li, t1);
+    			append_dev(li, t);
 
     			if (!mounted) {
-    				dispose = listen_dev(li, "click", /*removeFromArray*/ ctx[4].bind(this, /*i*/ ctx[8]), false, false, false, false);
+    				dispose = listen_dev(
+    					li,
+    					"click",
+    					function () {
+    						if (is_function(/*removePassword*/ ctx[4].bind(this, /*i*/ ctx[8]))) /*removePassword*/ ctx[4].bind(this, /*i*/ ctx[8]).apply(this, arguments);
+    					},
+    					false,
+    					false,
+    					false,
+    					false
+    				);
+
     				mounted = true;
     			}
     		},
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
-    			if (dirty & /*passwordsArray*/ 4 && t0_value !== (t0_value = /*password*/ ctx[6] + "")) set_data_dev(t0, t0_value);
+    			if (dirty & /*passwords*/ 4 && t_value !== (t_value = /*pw*/ ctx[6] + "")) set_data_dev(t, t_value);
     		},
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(li);
@@ -558,7 +652,7 @@ var app = (function () {
     		block,
     		id: create_each_block.name,
     		type: "each",
-    		source: "(56:1) {#each passwordsArray as password, i}",
+    		source: "(59:1) {#each passwords as pw, i (pw)}",
     		ctx
     	});
 
@@ -568,7 +662,7 @@ var app = (function () {
     function create_fragment(ctx) {
     	let h1;
     	let t1;
-    	let p0;
+    	let p;
     	let t3;
     	let ol;
     	let li0;
@@ -583,34 +677,34 @@ var app = (function () {
     	let t13;
     	let li5;
     	let t15;
-    	let div;
-    	let label;
-    	let t17;
     	let input;
-    	let t18;
+    	let t16;
     	let button;
-    	let t20;
-    	let t21;
+    	let t18;
+    	let t19;
     	let ul;
-    	let t22;
-    	let p1;
+    	let each_blocks = [];
+    	let each_1_lookup = new Map();
     	let mounted;
     	let dispose;
 
     	function select_block_type(ctx, dirty) {
-    		if (/*passwordValidity*/ ctx[1] === "Too short") return create_if_block;
-    		if (/*passwordValidity*/ ctx[1] === "Too long") return create_if_block_1;
+    		if (/*passwordValidity*/ ctx[1] === "short") return create_if_block;
+    		if (/*passwordValidity*/ ctx[1] === "long") return create_if_block_1;
     		return create_else_block;
     	}
 
     	let current_block_type = select_block_type(ctx);
     	let if_block = current_block_type(ctx);
-    	let each_value = /*passwordsArray*/ ctx[2];
+    	let each_value = /*passwords*/ ctx[2];
     	validate_each_argument(each_value);
-    	let each_blocks = [];
+    	const get_key = ctx => /*pw*/ ctx[6];
+    	validate_each_keys(ctx, each_value, get_each_context, get_key);
 
     	for (let i = 0; i < each_value.length; i += 1) {
-    		each_blocks[i] = create_each_block(get_each_context(ctx, each_value, i));
+    		let child_ctx = get_each_context(ctx, each_value, i);
+    		let key = get_key(child_ctx);
+    		each_1_lookup.set(key, each_blocks[i] = create_each_block(key, child_ctx));
     	}
 
     	const block = {
@@ -618,8 +712,8 @@ var app = (function () {
     			h1 = element("h1");
     			h1.textContent = "Assignment";
     			t1 = space();
-    			p0 = element("p");
-    			p0.textContent = "Solve these tasks.";
+    			p = element("p");
+    			p.textContent = "Solve these tasks.";
     			t3 = space();
     			ol = element("ol");
     			li0 = element("li");
@@ -640,45 +734,32 @@ var app = (function () {
     			li5 = element("li");
     			li5.textContent = "Bonus: If a password is clicked, remove it from the list.";
     			t15 = space();
-    			div = element("div");
-    			label = element("label");
-    			label.textContent = "Password Field";
-    			t17 = space();
     			input = element("input");
-    			t18 = space();
+    			t16 = space();
     			button = element("button");
-    			button.textContent = "Add password";
-    			t20 = space();
+    			button.textContent = "Confirm Password";
+    			t18 = space();
     			if_block.c();
-    			t21 = space();
+    			t19 = space();
     			ul = element("ul");
 
     			for (let i = 0; i < each_blocks.length; i += 1) {
     				each_blocks[i].c();
     			}
 
-    			t22 = space();
-    			p1 = element("p");
-    			p1.textContent = "please start adding some passwords";
-    			add_location(h1, file, 23, 0, 573);
-    			add_location(p0, file, 25, 0, 594);
-    			add_location(li0, file, 28, 1, 627);
-    			add_location(li1, file, 29, 1, 703);
-    			add_location(li2, file, 33, 1, 823);
-    			add_location(li3, file, 36, 1, 911);
-    			add_location(li4, file, 37, 1, 982);
-    			add_location(li5, file, 38, 1, 1060);
-    			add_location(ol, file, 27, 0, 621);
-    			attr_dev(label, "for", "enteredPassword");
-    			add_location(label, file, 42, 1, 1162);
+    			add_location(h1, file, 27, 0, 539);
+    			add_location(p, file, 29, 0, 560);
+    			add_location(li0, file, 32, 1, 593);
+    			add_location(li1, file, 33, 1, 669);
+    			add_location(li2, file, 37, 1, 789);
+    			add_location(li3, file, 40, 1, 877);
+    			add_location(li4, file, 41, 1, 948);
+    			add_location(li5, file, 42, 1, 1026);
+    			add_location(ol, file, 31, 0, 587);
     			attr_dev(input, "type", "password");
-    			attr_dev(input, "id", "enteredPassword");
-    			add_location(input, file, 43, 1, 1215);
-    			attr_dev(div, "class", "form-control");
-    			add_location(div, file, 41, 0, 1134);
-    			add_location(button, file, 45, 0, 1298);
-    			add_location(ul, file, 54, 0, 1560);
-    			add_location(p1, file, 62, 0, 1755);
+    			add_location(input, file, 45, 0, 1100);
+    			add_location(button, file, 47, 0, 1156);
+    			add_location(ul, file, 57, 0, 1404);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -686,7 +767,7 @@ var app = (function () {
     		m: function mount(target, anchor) {
     			insert_dev(target, h1, anchor);
     			insert_dev(target, t1, anchor);
-    			insert_dev(target, p0, anchor);
+    			insert_dev(target, p, anchor);
     			insert_dev(target, t3, anchor);
     			insert_dev(target, ol, anchor);
     			append_dev(ol, li0);
@@ -701,16 +782,13 @@ var app = (function () {
     			append_dev(ol, t13);
     			append_dev(ol, li5);
     			insert_dev(target, t15, anchor);
-    			insert_dev(target, div, anchor);
-    			append_dev(div, label);
-    			append_dev(div, t17);
-    			append_dev(div, input);
+    			insert_dev(target, input, anchor);
     			set_input_value(input, /*enteredPassword*/ ctx[0]);
-    			insert_dev(target, t18, anchor);
+    			insert_dev(target, t16, anchor);
     			insert_dev(target, button, anchor);
-    			insert_dev(target, t20, anchor);
+    			insert_dev(target, t18, anchor);
     			if_block.m(target, anchor);
-    			insert_dev(target, t21, anchor);
+    			insert_dev(target, t19, anchor);
     			insert_dev(target, ul, anchor);
 
     			for (let i = 0; i < each_blocks.length; i += 1) {
@@ -719,13 +797,10 @@ var app = (function () {
     				}
     			}
 
-    			insert_dev(target, t22, anchor);
-    			insert_dev(target, p1, anchor);
-
     			if (!mounted) {
     				dispose = [
     					listen_dev(input, "input", /*input_input_handler*/ ctx[5]),
-    					listen_dev(button, "click", /*addToPasswordsArray*/ ctx[3], false, false, false, false)
+    					listen_dev(button, "click", /*confirmPassword*/ ctx[3], false, false, false, false)
     				];
 
     				mounted = true;
@@ -744,32 +819,15 @@ var app = (function () {
 
     				if (if_block) {
     					if_block.c();
-    					if_block.m(t21.parentNode, t21);
+    					if_block.m(t19.parentNode, t19);
     				}
     			}
 
-    			if (dirty & /*removeFromArray, passwordsArray*/ 20) {
-    				each_value = /*passwordsArray*/ ctx[2];
+    			if (dirty & /*removePassword, passwords*/ 20) {
+    				each_value = /*passwords*/ ctx[2];
     				validate_each_argument(each_value);
-    				let i;
-
-    				for (i = 0; i < each_value.length; i += 1) {
-    					const child_ctx = get_each_context(ctx, each_value, i);
-
-    					if (each_blocks[i]) {
-    						each_blocks[i].p(child_ctx, dirty);
-    					} else {
-    						each_blocks[i] = create_each_block(child_ctx);
-    						each_blocks[i].c();
-    						each_blocks[i].m(ul, null);
-    					}
-    				}
-
-    				for (; i < each_blocks.length; i += 1) {
-    					each_blocks[i].d(1);
-    				}
-
-    				each_blocks.length = each_value.length;
+    				validate_each_keys(ctx, each_value, get_each_context, get_key);
+    				each_blocks = update_keyed_each(each_blocks, dirty, get_key, 1, ctx, each_value, each_1_lookup, ul, destroy_block, create_each_block, null, get_each_context);
     			}
     		},
     		i: noop,
@@ -777,20 +835,22 @@ var app = (function () {
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(h1);
     			if (detaching) detach_dev(t1);
-    			if (detaching) detach_dev(p0);
+    			if (detaching) detach_dev(p);
     			if (detaching) detach_dev(t3);
     			if (detaching) detach_dev(ol);
     			if (detaching) detach_dev(t15);
-    			if (detaching) detach_dev(div);
-    			if (detaching) detach_dev(t18);
+    			if (detaching) detach_dev(input);
+    			if (detaching) detach_dev(t16);
     			if (detaching) detach_dev(button);
-    			if (detaching) detach_dev(t20);
+    			if (detaching) detach_dev(t18);
     			if_block.d(detaching);
-    			if (detaching) detach_dev(t21);
+    			if (detaching) detach_dev(t19);
     			if (detaching) detach_dev(ul);
-    			destroy_each(each_blocks, detaching);
-    			if (detaching) detach_dev(t22);
-    			if (detaching) detach_dev(p1);
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].d();
+    			}
+
     			mounted = false;
     			run_all(dispose);
     		}
@@ -812,16 +872,16 @@ var app = (function () {
     	validate_slots('App', slots, []);
     	let enteredPassword = "";
     	let passwordValidity = "short";
-    	let passwordsArray = [];
+    	let passwords = [];
 
-    	function addToPasswordsArray() {
+    	function confirmPassword() {
     		if (passwordValidity === "valid") {
-    			$$invalidate(2, passwordsArray = [...passwordsArray, enteredPassword]);
+    			$$invalidate(2, passwords = [...passwords, enteredPassword]);
     		}
     	}
 
-    	function removeFromArray(index) {
-    		$$invalidate(2, passwordsArray = passwordsArray.filter((pw, idx) => {
+    	function removePassword(index) {
+    		$$invalidate(2, passwords = passwords.filter((pw, idx) => {
     			return idx !== index;
     		}));
     	}
@@ -840,15 +900,15 @@ var app = (function () {
     	$$self.$capture_state = () => ({
     		enteredPassword,
     		passwordValidity,
-    		passwordsArray,
-    		addToPasswordsArray,
-    		removeFromArray
+    		passwords,
+    		confirmPassword,
+    		removePassword
     	});
 
     	$$self.$inject_state = $$props => {
     		if ('enteredPassword' in $$props) $$invalidate(0, enteredPassword = $$props.enteredPassword);
     		if ('passwordValidity' in $$props) $$invalidate(1, passwordValidity = $$props.passwordValidity);
-    		if ('passwordsArray' in $$props) $$invalidate(2, passwordsArray = $$props.passwordsArray);
+    		if ('passwords' in $$props) $$invalidate(2, passwords = $$props.passwords);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -858,9 +918,9 @@ var app = (function () {
     	$$self.$$.update = () => {
     		if ($$self.$$.dirty & /*enteredPassword*/ 1) {
     			if (enteredPassword.trim().length < 5) {
-    				$$invalidate(1, passwordValidity = "Too short");
+    				$$invalidate(1, passwordValidity = "short");
     			} else if (enteredPassword.trim().length > 10) {
-    				$$invalidate(1, passwordValidity = "Too long");
+    				$$invalidate(1, passwordValidity = "long");
     			} else {
     				$$invalidate(1, passwordValidity = "valid");
     			}
@@ -870,9 +930,9 @@ var app = (function () {
     	return [
     		enteredPassword,
     		passwordValidity,
-    		passwordsArray,
-    		addToPasswordsArray,
-    		removeFromArray,
+    		passwords,
+    		confirmPassword,
+    		removePassword,
     		input_input_handler
     	];
     }
